@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>PDF → pricebook.json (client)</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; padding:1rem; background:#f5f5f5; }
+    label { font-weight:600; display:block; margin-bottom:.25rem; }
+    input, textarea, button { font:inherit; padding:.4rem .5rem; border:1px solid #ccc; border-radius:.4rem; width:100%; box-sizing:border-box; }
+    textarea { min-height:200px; }
+    button { width:auto; cursor:pointer; }
+    #status { margin-top:.5rem; font-size:.8rem; color:#555; }
+    pre { background:#fff; border:1px solid #ddd; padding:.5rem; border-radius:.5rem; overflow:auto; }
+  </style>
+  <!-- pdf.js from CDN -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.7.76/pdf.min.js"></script>
+</head>
+<body>
+  <h1>PDF → pricebook.json</h1>
+  <p>Paste the RAW GitHub URL to your pricebook PDF, press “Convert”, then copy/download the JSON.</p>
+
+  <label for="pdfUrl">PDF URL</label>
+  <input id="pdfUrl" placeholder="https://raw.githubusercontent.com/.../pricebook.pdf" />
+
+  <button id="convertBtn">Convert</button>
+  <div id="status"></div>
+
+  <h2>JSON output</h2>
+  <textarea id="jsonOut" readonly></textarea>
+  <button id="downloadBtn">Download JSON</button>
+
+  <script>
+    // matches: p1949 Minor building work £150.00
+    const lineRe = /^(p?\d{3,5})\s+(.*?)\s+£?(\d+(?:\.\d{1,2})?)$/i;
+
+    async function fetchPdfText(url) {
+      const loadingTask = window.pdfjsLib.getDocument(url);
+      const pdf = await loadingTask.promise;
+      let fullText = "";
+      for (let i = 1; i <= pdf.numPages; i++) {
+        const page = await pdf.getPage(i);
+        const content = await page.getTextContent();
+        const strings = content.items.map(it => it.str);
+        // join with spaces, then split into lines – PDF text is messy, we try to recover lines
+        fullText += strings.join(" ") + "\n";
+      }
+      return fullText;
+    }
+
+    function extractPricebook(text) {
+      const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+      const rows = [];
+      for (const line of lines) {
+        const m = lineRe.exec(line);
+        if (m) {
+          rows.push({
+            code: m[1],
+            description: m[2],
+            price: parseFloat(m[3])
+          });
+        }
+      }
+      return rows;
+    }
+
+    document.getElementById("convertBtn").onclick = async () => {
+      const url = document.getElementById("pdfUrl").value.trim();
+      const status = document.getElementById("status");
+      const out = document.getElementById("jsonOut");
+      if (!url) {
+        status.textContent = "Please paste the RAW pdf URL.";
+        return;
+      }
+      status.textContent = "Loading PDF and extracting text...";
+      out.value = "";
+      try {
+        const text = await fetchPdfText(url);
+        status.textContent = "Parsing lines...";
+        const rows = extractPricebook(text);
+        status.textContent = `Done. Found ${rows.length} items. Check descriptions and prices.`;
+        out.value = JSON.stringify(rows, null, 2);
+      } catch (err) {
+        console.error(err);
+        status.textContent = "Error: " + err.message;
+      }
+    };
+
+    document.getElementById("downloadBtn").onclick = () => {
+      const data = document.getElementById("jsonOut").value;
+      const blob = new Blob([data], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "pricebook.json";
+      a.click();
+      URL.revokeObjectURL(url);
+    };
+  </script>
+</body>
+</html>
