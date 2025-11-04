@@ -24,8 +24,13 @@ pre{background:#fff;border:1px solid #ddd;padding:.5rem;border-radius:.5rem;over
 const PDF_URL = "https://martinbibb-cmd.github.io/Asp/Manual%20Pricebook_28.05.2025%20-%20Updated.pdf"; // update if needed
 const lineRe = /^(p?\d{3,5})\s+(.*?)\s+£?(\d+(?:\.\d{1,2})?)$/i;
 
+function withCacheBuster(url){
+  const separator = url.includes("?") ? "&" : "?";
+  return `${url}${separator}_=${Date.now()}`;
+}
+
 async function fetchPdfText(url){
-  const loadingTask = window.pdfjsLib.getDocument(url);
+  const loadingTask = window.pdfjsLib.getDocument(withCacheBuster(url));
   const pdf = await loadingTask.promise;
   let text = "";
   for(let i=1;i<=pdf.numPages;i++){

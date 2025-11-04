@@ -34,8 +34,13 @@
     // matches: p1949 Minor building work £150.00
     const lineRe = /^(p?\d{3,5})\s+(.*?)\s+£?(\d+(?:\.\d{1,2})?)$/i;
 
+    function withCacheBuster(url) {
+      const separator = url.includes("?") ? "&" : "?";
+      return `${url}${separator}_=${Date.now()}`;
+    }
+
     async function fetchPdfText(url) {
-      const loadingTask = window.pdfjsLib.getDocument(url);
+      const loadingTask = window.pdfjsLib.getDocument(withCacheBuster(url));
       const pdf = await loadingTask.promise;
       let fullText = "";
       for (let i = 1; i <= pdf.numPages; i++) {
