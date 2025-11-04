@@ -66,7 +66,7 @@
 </head>
 <body>
   <h1>ASP Builder</h1>
-  <p class="info">Always to: <strong>ASP Team</strong>. Fill remove/add and who’s paying.</p>
+  <p class="info">Always to: <strong>ASP Team</strong>. Choose what’s coming off, what’s going on, and who pays.</p>
 
   <div style="max-width:400px; margin-bottom:1rem;">
     <label for="jobref">Job / lead ref (optional)</label>
@@ -107,7 +107,13 @@
   </div>
 
   <script>
-    let PRICEBOOK = [];
+    // 👇 Replace these with your real items when you’ve got the JSON
+    const PRICEBOOK = [
+      { "code": "p1949", "description": "Minor building work", "price": 150.00 },
+      { "code": "p1992", "description": "Major building work", "price": 260.00 },
+      { "code": "p3001", "description": "5 hour specialist builder pack", "price": 325.00 },
+      { "code": "p5000", "description": "Scaffold – 2 storey", "price": 480.00 }
+    ];
     let removeItems = [];
     let addItems = [];
 
@@ -119,27 +125,7 @@
     const outputEl = document.getElementById("output");
     const infoEl = document.getElementById("info");
 
-    searchStatusEl.textContent = "Loading pricebook...";
-
-    function formatPrice(value) {
-      if (value === null || value === undefined || value === "") return "";
-      const num = Number(value);
-      if (Number.isNaN(num)) return "";
-      return `£${Number.isInteger(num) ? num.toString() : num.toFixed(2)}`;
-    }
-
-    async function loadPricebook() {
-      try {
-        const res = await fetch("pricebook.json");
-        if (!res.ok) throw new Error("HTTP " + res.status);
-        const data = await res.json();
-        PRICEBOOK = Array.isArray(data) ? data : [];
-        searchStatusEl.textContent = `Loaded ${PRICEBOOK.length} pricebook items.`;
-      } catch (err) {
-        PRICEBOOK = [];
-        searchStatusEl.textContent = "Could not load pricebook.json – place it in the same folder.";
-      }
-    }
+    searchStatusEl.textContent = `Loaded ${PRICEBOOK.length} pricebook items.`;
 
     function renderLists() {
       if (!removeItems.length) {
@@ -149,9 +135,7 @@
         removeItems.forEach((it, idx) => {
           const pill = document.createElement("span");
           pill.className = "pill";
-          const price = formatPrice(it.price);
-          const text = `${it.description || ""}${price ? " " + price : ""}`.trim();
-          pill.innerHTML = `<strong>${it.code || "?"}</strong>${text ? " " + text : ""}`;
+          pill.innerHTML = `<strong>${it.code}</strong> ${it.description} ${it.price ? "£"+it.price : ""}`;
           const btn = document.createElement("button");
           btn.textContent = "×";
           btn.onclick = () => {
@@ -171,9 +155,7 @@
         addItems.forEach((it, idx) => {
           const pill = document.createElement("span");
           pill.className = "pill";
-          const price = formatPrice(it.price);
-          const text = `${it.description || ""}${price ? " " + price : ""}`.trim();
-          pill.innerHTML = `<strong>${it.code || "?"}</strong>${text ? " " + text : ""}`;
+          pill.innerHTML = `<strong>${it.code}</strong> ${it.description} ${it.price ? "£"+it.price : ""}`;
           const btn = document.createElement("button");
           btn.textContent = "×";
           btn.onclick = () => {
@@ -206,10 +188,7 @@
         const row = document.createElement("div");
         const left = document.createElement("div");
         left.style.flex = "1";
-        const price = formatPrice(item.price);
-        const description = item.description ? ` – ${item.description}` : "";
-        const code = item.code || "?";
-        left.innerHTML = `<strong>${code}</strong>${description}${price ? " ("+price+")" : ""}`;
+        left.innerHTML = `<strong>${item.code}</strong> – ${item.description} ${item.price ? " (£"+item.price+")" : ""}`;
         const right = document.createElement("div");
         const btnRemove = document.createElement("button");
         btnRemove.textContent = "Off";
@@ -243,18 +222,8 @@
     function buildASP() {
       const jobref = document.getElementById("jobref").value.trim();
       const payer = getPayer();
-      const remover = removeItems.map(it => {
-        const price = formatPrice(it.price);
-        const code = it.code || "?";
-        const description = it.description ? ` – ${it.description}` : "";
-        return `• ${code}${description}${price ? " ("+price+")" : ""}`;
-      }).join("\n");
-      const adder = addItems.map(it => {
-        const price = formatPrice(it.price);
-        const code = it.code || "?";
-        const description = it.description ? ` – ${it.description}` : "";
-        return `• ${code}${description}${price ? " ("+price+")" : ""} (cast to ${payer})`;
-      }).join("\n");
+      const remover = removeItems.map(it => `• ${it.code} – ${it.description}${it.price ? " (£"+it.price+")" : ""}`).join("\n");
+      const adder = addItems.map(it => `• ${it.code} – ${it.description}${it.price ? " (£"+it.price+")" : ""} (cast to ${payer})`).join("\n");
 
       const lines = [];
       lines.push("ASP Team,");
@@ -293,7 +262,6 @@
 
     renderLists();
     buildASP();
-    loadPricebook();
   </script>
 </body>
 </html>
