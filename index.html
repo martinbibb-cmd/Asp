@@ -1,267 +1,80 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <title>ASP Builder (remove / add / payer)</title>
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <style>
-    :root {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      background: #f5f5f5;
-      color: #222;
-    }
-    body {
-      margin: 0;
-      padding: 1rem;
-      max-width: 1100px;
-      margin-inline: auto;
-    }
-    h1 { font-size: 1.2rem; margin-bottom: .4rem; }
-    h2 { font-size: 1rem; margin-top: 1.25rem; }
-    label { font-weight: 600; display:block; margin-bottom:.25rem; }
-    input, button, textarea {
-      font: inherit;
-      padding: .45rem .5rem;
-      border: 1px solid #ccc;
-      border-radius: .4rem;
-      box-sizing: border-box;
-    }
-    input, textarea { width: 100%; }
-    textarea { min-height: 160px; resize: vertical; }
-    .row { display:flex; gap:.75rem; flex-wrap:wrap; }
-    .col { flex:1 1 280px; }
-    .box {
-      background:#fff;
-      border:1px solid #ddd;
-      border-radius:.5rem;
-      padding:.5rem;
-    }
-    .search-results div {
-      display:flex;
-      justify-content:space-between;
-      gap:.5rem;
-      align-items:center;
-      border-bottom:1px solid #eee;
-      padding:.3rem .2rem;
-      font-size:.8rem;
-    }
-    .search-results div:last-child { border-bottom:none; }
-    .btn-sm { width:auto; padding:.25rem .45rem; font-size:.7rem; }
-    .pill-list { display:flex; flex-wrap:wrap; gap:.4rem; }
-    .pill {
-      background:#eef4ff;
-      border-radius:999px;
-      padding:.25rem .6rem;
-      display:flex;
-      gap:.35rem;
-      align-items:center;
-      font-size:.75rem;
-    }
-    .pill button { border:none; background:none; font-weight:700; cursor:pointer; padding:0; }
-    .info { font-size:.7rem; color:#555; }
-    .payer-wrap { display:flex; gap:1rem; flex-wrap:wrap; margin-top:.4rem; }
-    .payer-wrap label { font-weight:400; display:flex; align-items:center; gap:.25rem; }
-    @media (max-width: 700px) { .row { flex-direction:column; } }
-  </style>
+<meta charset="UTF-8" />
+<title>ASP Builder + PDF to JSON</title>
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<style>
+:root{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#f5f5f5;color:#222}
+body{margin:0;padding:1rem;max-width:1100px;margin-inline:auto}
+button,input,textarea{font:inherit;padding:.45rem .5rem;border:1px solid #ccc;border-radius:.4rem}
+button{cursor:pointer}
+pre{background:#fff;border:1px solid #ddd;padding:.5rem;border-radius:.5rem;overflow:auto;max-height:60vh}
+</style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.7.76/pdf.min.js"></script>
 </head>
 <body>
-  <h1>ASP Builder</h1>
-  <p class="info">Always to: <strong>ASP Team</strong>. Choose what’s coming off, what’s going on, and who pays.</p>
 
-  <div style="max-width:400px; margin-bottom:1rem;">
-    <label for="jobref">Job / lead ref (optional)</label>
-    <input id="jobref" placeholder="e.g. 50430409 – BH23 4LH" />
-  </div>
+<h1>ASP Builder</h1>
+<p><button id="genBtn">📄 Generate pricebook.json from PDF</button></p>
+<div id="genStatus" style="font-size:.8rem;color:#555;margin:.3rem 0;"></div>
+<pre id="jsonOutput" style="display:none;"></pre>
 
-  <h2>1. Search the pricebook</h2>
-  <div class="row">
-    <div class="col" style="flex:1 1 330px;">
-      <label for="search">Search code or description</label>
-      <input id="search" placeholder="p1949, major building, scaffold..." />
-      <div id="searchStatus" class="info" style="margin-top:.25rem;"></div>
-      <div id="results" class="box search-results" style="margin-top:.25rem; max-height:250px; overflow:auto;">
-        <div class="info">Start typing to search.</div>
-      </div>
-    </div>
-    <div class="col">
-      <h3 style="font-size:.85rem;margin-top:0;">What is coming off</h3>
-      <div id="removeList" class="pill-list box" style="min-height:70px;"></div>
-      <h3 style="font-size:.85rem;margin-top:1rem;">What’s going on</h3>
-      <div id="addList" class="pill-list box" style="min-height:70px;"></div>
-    </div>
-  </div>
+<script>
+const PDF_URL = "https://martinbibb-cmd.github.io/Asp/Manual%20Pricebook_28.05.2025%20-%20Updated.pdf"; // update if needed
+const lineRe = /^(p?\d{3,5})\s+(.*?)\s+£?(\d+(?:\.\d{1,2})?)$/i;
 
-  <h2>2. Who is paying?</h2>
-  <div class="payer-wrap" id="payerWrap">
-    <label><input type="radio" name="payer" value="customer" /> Customer</label>
-    <label><input type="radio" name="payer" value="sales" checked /> Sales</label>
-    <label><input type="radio" name="payer" value="installs" /> Installs</label>
-  </div>
+async function fetchPdfText(url){
+  const loadingTask = window.pdfjsLib.getDocument(url);
+  const pdf = await loadingTask.promise;
+  let text = "";
+  for(let i=1;i<=pdf.numPages;i++){
+    const page = await pdf.getPage(i);
+    const content = await page.getTextContent();
+    text += content.items.map(it=>it.str).join(" ") + "\n";
+  }
+  return text;
+}
 
-  <h2>3. Output</h2>
-  <textarea id="output" readonly></textarea>
-  <div style="margin-top:.5rem; display:flex; gap:.5rem; flex-wrap:wrap;">
-    <button id="buildBtn">Build ASP</button>
-    <button id="copyBtn">Copy</button>
-    <span id="info" class="info"></span>
-  </div>
-
-  <script>
-    // 👇 Replace these with your real items when you’ve got the JSON
-    const PRICEBOOK = [
-      { "code": "p1949", "description": "Minor building work", "price": 150.00 },
-      { "code": "p1992", "description": "Major building work", "price": 260.00 },
-      { "code": "p3001", "description": "5 hour specialist builder pack", "price": 325.00 },
-      { "code": "p5000", "description": "Scaffold – 2 storey", "price": 480.00 }
-    ];
-    let removeItems = [];
-    let addItems = [];
-
-    const searchInput = document.getElementById("search");
-    const resultsEl = document.getElementById("results");
-    const searchStatusEl = document.getElementById("searchStatus");
-    const removeListEl = document.getElementById("removeList");
-    const addListEl = document.getElementById("addList");
-    const outputEl = document.getElementById("output");
-    const infoEl = document.getElementById("info");
-
-    searchStatusEl.textContent = `Loaded ${PRICEBOOK.length} pricebook items.`;
-
-    function renderLists() {
-      if (!removeItems.length) {
-        removeListEl.innerHTML = `<span class="info">Nothing to remove.</span>`;
-      } else {
-        removeListEl.innerHTML = "";
-        removeItems.forEach((it, idx) => {
-          const pill = document.createElement("span");
-          pill.className = "pill";
-          pill.innerHTML = `<strong>${it.code}</strong> ${it.description} ${it.price ? "£"+it.price : ""}`;
-          const btn = document.createElement("button");
-          btn.textContent = "×";
-          btn.onclick = () => {
-            removeItems.splice(idx,1);
-            renderLists();
-            buildASP();
-          };
-          pill.appendChild(btn);
-          removeListEl.appendChild(pill);
-        });
-      }
-
-      if (!addItems.length) {
-        addListEl.innerHTML = `<span class="info">Nothing to add.</span>`;
-      } else {
-        addListEl.innerHTML = "";
-        addItems.forEach((it, idx) => {
-          const pill = document.createElement("span");
-          pill.className = "pill";
-          pill.innerHTML = `<strong>${it.code}</strong> ${it.description} ${it.price ? "£"+it.price : ""}`;
-          const btn = document.createElement("button");
-          btn.textContent = "×";
-          btn.onclick = () => {
-            addItems.splice(idx,1);
-            renderLists();
-            buildASP();
-          };
-          pill.appendChild(btn);
-          addListEl.appendChild(pill);
-        });
-      }
+function extractRows(txt){
+  const rows=[];
+  txt.split(/\r?\n/).forEach(line=>{
+    line=line.trim();
+    const m=lineRe.exec(line);
+    if(m){
+      rows.push({code:m[1],description:m[2].trim(),price:parseFloat(m[3])});
     }
+  });
+  return rows;
+}
 
-    function doSearch(term) {
-      term = term.trim().toLowerCase();
-      if (!term) {
-        resultsEl.innerHTML = `<div class="info">Start typing to search.</div>`;
-        return;
-      }
-      const filtered = PRICEBOOK.filter(item => {
-        return (item.code && item.code.toLowerCase().includes(term)) ||
-               (item.description && item.description.toLowerCase().includes(term));
-      }).slice(0, 50);
-      if (!filtered.length) {
-        resultsEl.innerHTML = `<div class="info">No matches.</div>`;
-        return;
-      }
-      resultsEl.innerHTML = "";
-      filtered.forEach(item => {
-        const row = document.createElement("div");
-        const left = document.createElement("div");
-        left.style.flex = "1";
-        left.innerHTML = `<strong>${item.code}</strong> – ${item.description} ${item.price ? " (£"+item.price+")" : ""}`;
-        const right = document.createElement("div");
-        const btnRemove = document.createElement("button");
-        btnRemove.textContent = "Off";
-        btnRemove.className = "btn-sm";
-        btnRemove.onclick = () => {
-          removeItems.push(item);
-          renderLists();
-          buildASP();
-        };
-        const btnAdd = document.createElement("button");
-        btnAdd.textContent = "On";
-        btnAdd.className = "btn-sm";
-        btnAdd.onclick = () => {
-          addItems.push(item);
-          renderLists();
-          buildASP();
-        };
-        right.appendChild(btnRemove);
-        right.appendChild(btnAdd);
-        row.appendChild(left);
-        row.appendChild(right);
-        resultsEl.appendChild(row);
-      });
-    }
+async function generate(){
+  const status=document.getElementById("genStatus");
+  const out=document.getElementById("jsonOutput");
+  status.textContent="Loading PDF...";
+  out.style.display="none";
+  try{
+    const text=await fetchPdfText(PDF_URL);
+    status.textContent="Parsing text...";
+    const rows=extractRows(text);
+    const json=JSON.stringify(rows,null,2);
+    out.textContent=json;
+    out.style.display="block";
+    status.textContent=`✅ Found ${rows.length} items. Copy or download below.`;
+    const blob=new Blob([json],{type:"application/json"});
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement("a");
+    a.href=url;
+    a.download="pricebook.json";
+    a.textContent="Download pricebook.json";
+    status.append(" ",a);
+  }catch(e){
+    status.textContent="❌ "+e.message;
+    console.error(e);
+  }
+}
 
-    function getPayer() {
-      const checked = document.querySelector('input[name="payer"]:checked');
-      return checked ? checked.value : "sales";
-    }
-
-    function buildASP() {
-      const jobref = document.getElementById("jobref").value.trim();
-      const payer = getPayer();
-      const remover = removeItems.map(it => `• ${it.code} – ${it.description}${it.price ? " (£"+it.price+")" : ""}`).join("\n");
-      const adder = addItems.map(it => `• ${it.code} – ${it.description}${it.price ? " (£"+it.price+")" : ""} (cast to ${payer})`).join("\n");
-
-      const lines = [];
-      lines.push("ASP Team,");
-      lines.push("");
-      if (jobref) lines.push(`Job/ref: ${jobref}`);
-      lines.push("Please amend the job as follows:");
-      lines.push("");
-      if (remover) {
-        lines.push("Remove:");
-        lines.push(remover);
-        lines.push("");
-      }
-      if (adder) {
-        lines.push("Add:");
-        lines.push(adder);
-        lines.push("");
-      }
-      lines.push(`Cost to be charged to: ${payer.toUpperCase()}.`);
-      lines.push("");
-      lines.push("Thanks.");
-
-      outputEl.value = lines.join("\n");
-      infoEl.textContent = `Remove: ${removeItems.length} | Add: ${addItems.length} | Payer: ${payer}`;
-    }
-
-    document.getElementById("buildBtn").onclick = buildASP;
-    document.getElementById("copyBtn").onclick = async () => {
-      try {
-        await navigator.clipboard.writeText(outputEl.value);
-        alert("Copied.");
-      } catch {
-        alert("Could not copy automatically.");
-      }
-    };
-    searchInput.addEventListener("input", () => doSearch(searchInput.value));
-
-    renderLists();
-    buildASP();
-  </script>
+document.getElementById("genBtn").onclick=generate;
+</script>
 </body>
 </html>
