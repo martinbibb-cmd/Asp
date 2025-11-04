@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>ASP Helper + Pricebook (Local)</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <style>
+    :root {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #f5f5f5;
+      color: #222;
+    }
+    body {
+      margin: 0;
+      padding: 1rem;
+      max-width: 1100px;
+      margin-inline: auto;
+    }
+    h1 { font-size: 1.2rem; margin-bottom: .3rem; }
+    h2 { font-size: 1rem; margin-top: 1.25rem; }
+    label { font-weight: 600; display:block; margin-bottom:.25rem; }
+    input, textarea, button, select {
+      font: inherit;
+      padding: .45rem .5rem;
+      border: 1px solid #ccc;
+      border-radius: .4rem;
+      width: 100%;
+      box-sizing: border-box;
+    }
+    textarea { min-height: 170px; resize: vertical; }
+    .row { display:flex; gap:.75rem; flex-wrap:wrap; }
+    .col { flex:1 1 240px; }
+    .tile-row { display:flex; gap:.5rem; flex-wrap:wrap; }
+    .tile {
+      background:#fff;
+      border:1px solid #ddd;
+      border-radius:.5rem;
+      padding:.4rem .6rem;
+      cursor:pointer;
+      font-size:.85rem;
+    }
+    .tile.active {
+      border-color:#0b74ff;
+      background:#eaf2ff;
+    }
+    .box {
+      background:#fff;
+      border:1px solid #ddd;
+      border-radius:.5rem;
+      padding:.5rem;
+    }
+    .search-results div {
+      padding:.3rem .25rem;
+      border-bottom:1px solid #eee;
+      display:flex;
+      justify-content:space-between;
+      gap:.5rem;
+      align-items:center;
+      font-size:.8rem;
+    }
+    .search-results div:last-child { border-bottom:none; }
+    .btn-sm {
+      width:auto;
+      padding:.25rem .45rem;
+      font-size:.7rem;
+    }
+    .pill-list {
+      display:flex;
+      flex-wrap:wrap;
+      gap:.4rem;
+    }
+    .pill {
+      background:#eef4ff;
+      border-radius:999px;
+      padding:.25rem .6rem;
+      display:flex;
+      gap:.3rem;
+      align-items:center;
+      font-size:.75rem;
+    }
+    .pill button {
+      border:none;
+      background:none;
+      font-weight:700;
+      cursor:pointer;
+      padding:0;
+    }
+    .info { font-size:.75rem; color:#555; }
+    @media (max-width: 700px) {
+      .row { flex-direction:column; }
+    }
+  </style>
+</head>
+<body>
+  <h1>ASP Helper (local pricebook)</h1>
+  <p class="info">
+    This runs in-browser. It loads <code>pricebook.json</code> from the same folder. No API.
+  </p>
+
+  <!-- top meta -->
+  <div class="row">
+    <div class="col">
+      <label for="to">To</label>
+      <input id="to" value="Andy" />
+    </div>
+    <div class="col">
+      <label for="jobref">Job / lead ref</label>
+      <input id="jobref" placeholder="e.g. 50430409 – BH23 4LH" />
+    </div>
+    <div class="col">
+      <label for="reason">Why you can’t do it</label>
+      <input id="reason" value="I can’t do it as the job is already in progress." />
+    </div>
+  </div>
+
+  <!-- task presets -->
+  <h2>1. Task type</h2>
+  <div class="tile-row" id="taskTiles"></div>
+
+  <!-- pricebook search -->
+  <h2>2. Pricebook search</h2>
+  <div class="row">
+    <div class="col" style="flex:1 1 320px;">
+      <label for="search">Search code or text</label>
+      <input id="search" placeholder="p1949 or 'Minor building'" />
+      <div id="searchStatus" class="info" style="margin-top:.25rem;"></div>
+      <div id="results" class="box search-results" style="margin-top:.35rem; max-height:260px; overflow:auto;">
+        <div class="info">No results yet.</div>
+      </div>
+    </div>
+    <div class="col">
+      <h3 style="font-size:.85rem;margin-top:0;">Add these items</h3>
+      <div id="addList" class="pill-list box" style="min-height:70px;"></div>
+      <h3 style="font-size:.85rem;margin-top:1rem;">Remove these items</h3>
+      <div id="removeList" class="pill-list box" style="min-height:70px;"></div>
+    </div>
+  </div>
+
+  <!-- output -->
+  <h2>3. Output</h2>
+  <textarea id="output" readonly></textarea>
+  <div style="margin-top:.5rem; display:flex; gap:.5rem; flex-wrap:wrap;">
+    <button id="buildBtn">Build ASP message</button>
+    <button id="copyBtn">Copy</button>
+    <span id="buildInfo" class="info"></span>
+  </div>
+
+  <script>
+    // ---------- CONFIG ----------
+    // These are the standard ASP phrasings you keep using.
+    const TASK_PRESETS = [
+      {
+        id: "swap-minor-major",
+        label: "Swap minor → major building work",
+        body: "Please ASP off the minor building work line and add the major building work line instead. Engineer to collect bricks/materials as required."
+      },
+      {
+        id: "remove-scaffold-add-5hr",
+        label: "ASP off scaffold, add 5h specialist builder",
+        body: "Please ASP off the scaffolding and add the 5 hour specialist builder pack to cover access/making good."
+      },
+      {
+        id: "general",
+        label: "General add/remove items",
+        body: "Please adjust the job as per the items below and cast to sales."
+      }
+    ];
+
+    // ---------- STATE ----------
+    let PRICEBOOK = [];                 // loaded from pricebook.json
+    let currentTaskId = TASK_PRESETS[0].id;
+    let addItems = [];   // {code, description, price}
+    let removeItems = []; // same
+
+    // ---------- DOM ----------
+    const taskTilesEl = document.getElementById("taskTiles");
+    const searchInput = document.getElementById("search");
+    const resultsEl = document.getElementById("results");
+    const searchStatusEl = document.getElementById("searchStatus");
+    const addListEl = document.getElementById("addList");
+    const removeListEl = document.getElementById("removeList");
+    const outputEl = document.getElementById("output");
+    const buildInfoEl = document.getElementById("buildInfo");
+
+    // ---------- RENDER TASK TILES ----------
+    function renderTaskTiles() {
+      taskTilesEl.innerHTML = "";
+      TASK_PRESETS.forEach(t => {
+        const div = document.createElement("div");
+        div.className = "tile" + (t.id === currentTaskId ? " active" : "");
+        div.textContent = t.label;
+        div.onclick = () => {
+          currentTaskId = t.id;
+          renderTaskTiles();
+          buildMessage();
+        };
+        taskTilesEl.appendChild(div);
+      });
+    }
+
+    // ---------- LOAD PRICEBOOK ----------
+    async function loadPricebook() {
+      try {
+        const res = await fetch("pricebook.json");
+        if (!res.ok) throw new Error("HTTP " + res.status);
+        const data = await res.json();
+        PRICEBOOK = Array.isArray(data) ? data : [];
+        searchStatusEl.textContent = `Loaded ${PRICEBOOK.length} items from pricebook.json`;
+      } catch (err) {
+        PRICEBOOK = [];
+        searchStatusEl.textContent = "Could not load pricebook.json – place it next to this file.";
+      }
+    }
+
+    // ---------- SEARCH ----------
+    function doSearch(term) {
+      term = term.trim().toLowerCase();
+      if (!term) {
+        resultsEl.innerHTML = `<div class="info">Type a code or description.</div>`;
+        return;
+      }
+      const filtered = PRICEBOOK.filter(item => {
+        return (item.code && item.code.toLowerCase().includes(term)) ||
+               (item.description && item.description.toLowerCase().includes(term));
+      }).slice(0, 50); // cap
+      if (!filtered.length) {
+        resultsEl.innerHTML = `<div class="info">No matches.</div>`;
+        return;
+      }
+      resultsEl.innerHTML = "";
+      filtered.forEach(item => {
+        const row = document.createElement("div");
+        const left = document.createElement("div");
+        left.style.flex = "1";
+        left.innerHTML = `<strong>${item.code || "?"}</strong> – ${item.description || ""} ${item.price ? " (£" + item.price + ")" : ""}`;
+        const right = document.createElement("div");
+        const btnAdd = document.createElement("button");
+        btnAdd.textContent = "+ Add";
+        btnAdd.className = "btn-sm";
+        btnAdd.onclick = () => {
+          addItems.push(item);
+          renderLists();
+          buildMessage();
+        };
+        const btnRemove = document.createElement("button");
+        btnRemove.textContent = "− Remove";
+        btnRemove.className = "btn-sm";
+        btnRemove.onclick = () => {
+          removeItems.push(item);
+          renderLists();
+          buildMessage();
+        };
+        right.appendChild(btnAdd);
+        right.appendChild(btnRemove);
+        row.appendChild(left);
+        row.appendChild(right);
+        resultsEl.appendChild(row);
+      });
+    }
+
+    // ---------- RENDER LISTS ----------
+    function renderLists() {
+      // add
+      if (!addItems.length) {
+        addListEl.innerHTML = `<span class="info">No add items.</span>`;
+      } else {
+        addListEl.innerHTML = "";
+        addItems.forEach((it, idx) => {
+          const pill = document.createElement("span");
+          pill.className = "pill";
+          pill.innerHTML = `<strong>${it.code}</strong> ${it.description} ${it.price ? "£"+it.price : ""}`;
+          const btn = document.createElement("button");
+          btn.textContent = "×";
+          btn.onclick = () => {
+            addItems.splice(idx,1);
+            renderLists();
+            buildMessage();
+          };
+          pill.appendChild(btn);
+          addListEl.appendChild(pill);
+        });
+      }
+      // remove
+      if (!removeItems.length) {
+        removeListEl.innerHTML = `<span class="info">No remove items.</span>`;
+      } else {
+        removeListEl.innerHTML = "";
+        removeItems.forEach((it, idx) => {
+          const pill = document.createElement("span");
+          pill.className = "pill";
+          pill.innerHTML = `<strong>${it.code}</strong> ${it.description} ${it.price ? "£"+it.price : ""}`;
+          const btn = document.createElement("button");
+          btn.textContent = "×";
+          btn.onclick = () => {
+            removeItems.splice(idx,1);
+            renderLists();
+            buildMessage();
+          };
+          pill.appendChild(btn);
+          removeListEl.appendChild(pill);
+        });
+      }
+    }
+
+    // ---------- BUILD MESSAGE ----------
+    function buildMessage() {
+      const to = document.getElementById("to").value.trim() || "Andy";
+      const jobref = document.getElementById("jobref").value.trim();
+      const reason = document.getElementById("reason").value.trim();
+      const task = TASK_PRESETS.find(t => t.id === currentTaskId) || TASK_PRESETS[0];
+
+      const addLines = addItems.map(it => {
+        const pricePart = it.price ? ` (£${it.price})` : "";
+        return `• ADD ${it.code} – ${it.description}${pricePart} (cast to sales)`;
+      }).join("\n");
+      const removeLines = removeItems.map(it => {
+        const pricePart = it.price ? ` (£${it.price})` : "";
+        return `• REMOVE ${it.code} – ${it.description}${pricePart}`;
+      }).join("\n");
+
+      const blocks = [];
+      if (addLines) blocks.push("Add:\n" + addLines);
+      if (removeLines) blocks.push("Remove:\n" + removeLines);
+
+      const jobLine = jobref ? `Job/ref: ${jobref}\n` : "";
+
+      const msg =
+`${to},
+
+${task.body}
+
+${blocks.length ? blocks.join("\n\n") + "\n\n" : ""}${jobLine}${reason}
+
+Thanks.`;
+
+      outputEl.value = msg;
+      buildInfoEl.textContent = `Add: ${addItems.length} | Remove: ${removeItems.length}`;
+    }
+
+    // ---------- EVENTS ----------
+    document.getElementById("buildBtn").onclick = buildMessage;
+    document.getElementById("copyBtn").onclick = async () => {
+      try {
+        await navigator.clipboard.writeText(outputEl.value);
+        alert("Copied to clipboard.");
+      } catch (e) {
+        alert("Could not copy, select text manually.");
+      }
+    };
+    searchInput.addEventListener("input", () => {
+      doSearch(searchInput.value);
+    });
+
+    // ---------- INIT ----------
+    renderTaskTiles();
+    renderLists();
+    buildMessage();
+    loadPricebook();
+  </script>
+</body>
+</html>
