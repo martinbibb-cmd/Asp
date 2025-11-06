@@ -9,6 +9,12 @@ The repository includes a helper script that parses the bundled
 that can be consumed by other tooling (for example the web client in
 `index.html`). Each JSON entry contains the part code, description and price.
 
+> **Note:** The checked-in `pricebook.json` is a curated dataset that includes
+> metadata (`title`, `notes`, `lastRefreshed`) plus richer item details such as
+> `category` and `leadTimeDays`. The conversion script continues to output a
+> simple array of `{code, description, price}` objects so that downstream tools
+> can decide how to enrich the data.
+
 ```bash
 python tools/pdf_to_pricebook.py --out pricebook.json
 ```
